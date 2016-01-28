@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+
+# Make sure the script aborts if a call to some program fails
+set -e
+
+# Debug printing of arguments to script
+echo "Arg0 was $0"
+echo "Arg1 was $1"
+echo "Arg2 was $2"
+
+# Get the Input Directory and build file variables from it
+VID_DIR="$1"
+OUTPUT_VIDEO="$2"
+SLIDE_VIDEO=$VID_DIR/VGA.mp4
+SPEAKER_VIDEO=$VID_DIR/Video.mp4
+
+# Debug print the File Locations
+echo "SLIDE VIDEO:   " $SLIDE_VIDEO
+echo "SPEAKER VIDEO: " $SPEAKER_VIDEO
+
+
+# Test for files and print more useful error messages
+if [ ! -f $SLIDE_VIDEO ]; then
+  echo "Could not find slide video at $SLIDE_VIDEO"
+  exit 1
+fi
+if [ ! -f $SPEAKER_VIDEO ]; then
+  echo "Could not find speaker video at $SPEAKER_VIDEO"
+  exit 1
+fi
+
+
+# Measure Dimensions of Input Videos
+
+PROBE_SLIDE_CMD="ffprobe -v error -select_streams v:0 \
+                         -show_entries stream=height,width $SLIDE_VIDEO"
+PROBE_SPEAKER_CMD="ffprobe -v error -select_streams v:0 \
+                           -show_entries stream=height,width $SPEAKER_VIDEO"
+# Probe frame dimensions from input files
+SLW_in=$($PROBE_SLIDE_CMD | grep width | sed s/width=//)
+SLH_in=$($PROBE_SLIDE_CMD | grep height | sed s/height=//)
+SPW_in=$($PROBE_SPEAKER_CMD | grep width | sed s/width=//)
+SPH_in=$($PROBE_SPEAKER_CMD | grep height | sed s/height=//)
+
+echo "Probed Dimensions of Slide Video:   " $SLW_in $SLH_in
+echo "Probed Dimensions of Speaker Video: " $SPW_in $SPH_in
+
+
+# Numeric Constants for Editing
+
+# Width / Height of the Slide video (Use input size)
+SLW=$SLW_in
+SLH=$SLH_in
+# Width of the Speaker video
+SPW=420
+if [ $SLW -lt 420 ]; then
+  SPW=$SLW
+fi
+
+
+# Explanation of FFMPEG Options
+# -i                tags an argument as an input
+# -strict -2        is necessary to use the native AAC encoder
+# -filter_complex   give a string specifying the processing pipeline
+
+ffmpeg -i $SLIDE_VIDEO -i $SPEAKER_VIDEO -strict -2 \
+-filter_complex \
+"[0:v:0]scale=$SLW:-1,\
+      pad=width=iw+$SPW:height=ih:x=$SPW:y=0[slides]; \
+ [1:v:0]scale=$SPW:-1,
+      pad=width=iw:height=$SLH:x=0:y=$SLH-ih[speaker]; \
+ [slides][speaker]overlay" \
+$OUTPUT_VIDEO 2>out_ffmpeg.log
+
